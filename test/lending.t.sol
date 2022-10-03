@@ -40,6 +40,7 @@ contract Lending_test is Test
         lending = new Lending(address(usdc), address(dreamoracle));
 
         dreamoracle.setPrice(address(usdc), 1 ether);
+        usdc.mint(address(lending), 100 ether);
         usdc.mint(address(this), 100 ether);
 
         alice = address(0xa);
@@ -71,6 +72,51 @@ contract Lending_test is Test
     }
 
     function testborrow() public
+    {
+        vm.startPrank(bob);
+        address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
+        lending.borrow(address(usdc), 50);
+        assertEq(lending.guarantee_balanceOf(bob), 0);
+        assertEq(usdc.balanceOf(bob), 100 ether + 50);
+    }
+
+    function testwithdraw() public
+    {
+        vm.prank(bob);
+        lending.deposit(address(usdc), 10 ether);
+        assertEq(lending.atoken_balanceOf(bob), 10 ether);
+        vm.prank(bob);
+        lending.withdraw(address(usdc), 10 ether);
+        assertEq(ERC20(address(usdc)).balanceOf(bob), 100 ether);
+    
+        vm.startPrank(alice);
+        address(lending).call{value: 10 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 10 ether));
+        lending.withdraw(address(0), 10 ether);
+        assertEq(alice.balance, 100 ether);
+    }
+
+    function testrepay() public
+    {
+        vm.startPrank(bob);
+        address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
+        lending.borrow(address(usdc), 50);
+        lending.repay(address(usdc), 50);
+        assertEq(bob.balance, 100 ether);
+    }
+
+    function testliquidate() public
+    {
+        vm.startPrank(bob);
+        address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
+        lending.borrow(address(usdc), 50);
+        vm.stopPrank();
+        
+        usdc.approve(address(lending), 100 ether);
+        dreamoracle.setPrice(address(usdc), 1.5 ether);
+        lending.liquidate(bob, address(usdc), 20);
+    }
+
+    receive() payable external
     {
         
     }
