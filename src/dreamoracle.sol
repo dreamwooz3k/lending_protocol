@@ -19,6 +19,6 @@ contract DreamOracle
    function setPrice(address token, uint256 price) external // Pricing any token in eth
    {  
        require(msg.sender == operator, "only operator can set the price");
-       prices[token] = price;
+       prices[token] = price * 1 ether; // 1 $ -> 1 ether
    }
 }
