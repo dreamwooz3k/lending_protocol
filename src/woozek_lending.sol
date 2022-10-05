@@ -35,7 +35,7 @@ contract Lending
 
     function deposit(address tokenAddress, uint256 amount) payable external
     {
-        require(tokenAddress == usdc_addr || (tokenAddress == address(0) && msg.value != 0), "Check that the deposit call was successful");
+        require(tokenAddress == usdc_addr || (tokenAddress == address(0) && msg.value != 0), "Check that the deposit call was successful");        
         
         if(tokenAddress == address(0))
         {
@@ -44,7 +44,7 @@ contract Lending
         
         else
         {
-            ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount);
+            require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount), "Deposit : transferFrom Error");
             atoken.mint(msg.sender, amount);
         }
     }
@@ -52,18 +52,20 @@ contract Lending
     function borrow(address tokenAddress, uint256 amount) external
     {
         require(tokenAddress == usdc_addr, "Check token address");
-        
-        uint256 usdc_value = oracle.getPrice(usdc_addr); // ETH units per USDC
-        require(borrower_list[msg.sender].guarantee >= amount * usdc_value * 2, "LTV 50% : lack of collateral");
-        
+
+        uint256 eth_value = oracle.getPrice(address(0));
+        uint256 usdc_value = oracle.getPrice(usdc_addr);
+
+        require(borrower_list[msg.sender].guarantee / usdc_value * eth_value >= amount * 2, "LTV 50% : lack of collateral");
+    
+        update_fee(msg.sender);
         borrower_list[msg.sender].loan += amount;
         borrower_list[msg.sender].borrow_loan += amount;
-        borrower_list[msg.sender].guarantee -= amount * usdc_value * 2;
-        borrower_list[msg.sender].lock_guarantee += amount * usdc_value * 2;
+        borrower_list[msg.sender].guarantee -= amount / 1 ether * usdc_value / eth_value * 2 ether;
+        borrower_list[msg.sender].lock_guarantee += amount / 1 ether * usdc_value / eth_value * 2 ether;
         borrower_list[msg.sender].time = block.timestamp;
         
-        ERC20(tokenAddress).transfer(msg.sender, amount);
-        //debt_token.mint(msg.sender, amount);
+        ERC20(tokenAddress).transfer(msg.sender, amount / 1 ether);
     }
 
     function withdraw(address tokenAddress, uint256 amount) external
@@ -101,14 +103,19 @@ contract Lending
 
         uint256 fee = repay_fee(msg.sender);
         require(borrower_list[msg.sender].loan + fee >= amount, "Check amount value");
+        
+        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount / 1 ether), "repay : transferFrom Error");
 
-        ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount);
+        uint256 eth_value = oracle.getPrice(address(0));
+        uint256 usdc_value = oracle.getPrice(address(usdc_addr));
+
         update_fee(msg.sender);
         uint256 total_fee = borrower_list[msg.sender].loan - borrower_list[msg.sender].borrow_loan;
+
         if(amount > total_fee)
         {
+            uint256 repay_eth = borrower_list[msg.sender].lock_guarantee * (amount-total_fee) / borrower_list[msg.sender].borrow_loan;
             borrower_list[msg.sender].borrow_loan -= amount-total_fee;
-            uint256 repay_eth = borrower_list[msg.sender].lock_guarantee * (oracle.getPrice(usdc_addr) * amount - oracle.getPrice(usdc_addr) * total_fee) / (oracle.getPrice(usdc_addr) * borrower_list[msg.sender].loan);
             payable(msg.sender).transfer(repay_eth); 
         }
         borrower_list[msg.sender].loan-=amount;
@@ -116,22 +123,32 @@ contract Lending
 
     function liquidate(address borrower_addr, address tokenAddress, uint256 amount) external
     {
+        console.log(amount);
+        console.log(borrower_list[borrower_addr].loan);
         update_fee(borrower_addr);
-        require(borrower_list[borrower_addr].lock_guarantee * 3 / 4 <= borrower_list[borrower_addr].loan * oracle.getPrice(usdc_addr), "Liquidation Threshold 75% : Impossible to liquidate");
-        //require(debt_token.balanceOf(msg.sender) == 0, "A person in debt cannot liquidate.");
-        require(amount * oracle.getPrice(usdc_addr) <= borrower_list[borrower_addr].lock_guarantee, "An amount greater than the amount that can be liquidated has been received");
-        
-        ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount);
-        borrower_list[borrower_addr].lock_guarantee -= amount * oracle.getPrice(usdc_addr);
+        require(borrower_list[borrower_addr].lock_guarantee / 1 ether * oracle.getPrice(address(0)) / oracle.getPrice(usdc_addr) * 3 ether / 4 <= borrower_list[borrower_addr].loan, "Liquidation Threshold 75% : Impossible to liquidate");
+        require(amount <= borrower_list[borrower_addr].loan , "An amount greater than the amount that can be liquidated has been received");
+        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount / 1 ether), "liquidate : transferFrom Error");
+
         uint256 total_fee = borrower_list[msg.sender].loan - borrower_list[msg.sender].borrow_loan;
         borrower_list[borrower_addr].loan -= amount;
+        uint256 liquidate_eth;
 
         if(amount > total_fee)
         {
             borrower_list[borrower_addr].borrow_loan -= amount - total_fee;
+            if(amount >= oracle.getPrice(address(0)))
+            {
+                liquidate_eth = amount / 1 ether * oracle.getPrice(address(usdc_addr)) / oracle.getPrice(address(0));
+                borrower_list[borrower_addr].lock_guarantee -= liquidate_eth;
+            }
+            else
+            {
+                liquidate_eth = amount* oracle.getPrice(address(usdc_addr)) / oracle.getPrice(address(0));
+                borrower_list[borrower_addr].lock_guarantee -= liquidate_eth;
+            }
+            payable(msg.sender).transfer(liquidate_eth * 5 / 100); // liquidationBonus 5%
         }
-        
-        payable(msg.sender).transfer(amount * oracle.getPrice(usdc_addr) * 5 / 100); // liquidationBonus 5%
     }
 
     function update_fee(address borrower_addr) public
