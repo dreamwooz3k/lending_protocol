@@ -123,8 +123,6 @@ contract Lending
 
     function liquidate(address borrower_addr, address tokenAddress, uint256 amount) external
     {
-        console.log(amount);
-        console.log(borrower_list[borrower_addr].loan);
         update_fee(borrower_addr);
         require(borrower_list[borrower_addr].lock_guarantee / 1 ether * oracle.getPrice(address(0)) / oracle.getPrice(usdc_addr) * 3 ether / 4 <= borrower_list[borrower_addr].loan, "Liquidation Threshold 75% : Impossible to liquidate");
         require(amount <= borrower_list[borrower_addr].loan , "An amount greater than the amount that can be liquidated has been received");
@@ -179,5 +177,10 @@ contract Lending
     function guarantee_balanceOf(address user) public view returns(uint256)
     {
         return borrower_list[user].guarantee;
+    }
+
+    function loan_balanceOf(address user) public view returns(uint256)
+    {
+        return borrower_list[user].loan;
     }
 }
