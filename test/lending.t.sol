@@ -39,7 +39,8 @@ contract Lending_test is Test
         dreamoracle = new DreamOracle();
         lending = new Lending(address(usdc), address(dreamoracle));
 
-        dreamoracle.setPrice(address(usdc), 1 ether);
+        dreamoracle.setPrice(address(usdc), 1);
+        dreamoracle.setPrice(address(0), 200);
         usdc.mint(address(lending), 100 ether);
         usdc.mint(address(this), 100 ether);
 
@@ -75,9 +76,9 @@ contract Lending_test is Test
     {
         vm.startPrank(bob);
         address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
-        lending.borrow(address(usdc), 50);
+        lending.borrow(address(usdc), 10000 ether);
         assertEq(lending.guarantee_balanceOf(bob), 0);
-        assertEq(usdc.balanceOf(bob), 100 ether + 50);
+        assertEq(usdc.balanceOf(bob), 100 ether + 10000);
     }
 
     function testwithdraw() public
@@ -99,8 +100,8 @@ contract Lending_test is Test
     {
         vm.startPrank(bob);
         address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
-        lending.borrow(address(usdc), 50);
-        lending.repay(address(usdc), 50);
+        lending.borrow(address(usdc), 10000 ether);
+        lending.repay(address(usdc), 10000 ether);
         assertEq(bob.balance, 100 ether);
     }
 
@@ -108,12 +109,12 @@ contract Lending_test is Test
     {
         vm.startPrank(bob);
         address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
-        lending.borrow(address(usdc), 50);
+        lending.borrow(address(usdc), 10000 ether);
         vm.stopPrank();
         
-        usdc.approve(address(lending), 100 ether);
+        usdc.approve(address(lending), 10000);
         dreamoracle.setPrice(address(usdc), 1.5 ether);
-        lending.liquidate(bob, address(usdc), 20);
+        lending.liquidate(bob, address(usdc), 10000 ether);
     }
 
     receive() payable external
