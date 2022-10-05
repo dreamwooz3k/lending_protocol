@@ -11,7 +11,6 @@ contract Lending
 
     DreamOracle public oracle;  // admin is address(this)
     Atoken public atoken;
-
     address public usdc_addr;
     
     struct borrower
@@ -29,13 +28,12 @@ contract Lending
     {
         usdc_addr = usdc;
         oracle = DreamOracle(dreamoracle);
-
         atoken = new Atoken();
     }
 
     function deposit(address tokenAddress, uint256 amount) payable external
     {
-        require(tokenAddress == usdc_addr || (tokenAddress == address(0) && msg.value != 0), "Check that the deposit call was successful");        
+        require(tokenAddress == usdc_addr || (tokenAddress == address(0) && msg.value == amount), "Check that the deposit call was successful");        
         
         if(tokenAddress == address(0))
         {
@@ -61,17 +59,15 @@ contract Lending
         update_fee(msg.sender);
         borrower_list[msg.sender].loan += amount;
         borrower_list[msg.sender].borrow_loan += amount;
-        borrower_list[msg.sender].guarantee -= amount / 1 ether * usdc_value / eth_value * 2 ether;
-        borrower_list[msg.sender].lock_guarantee += amount / 1 ether * usdc_value / eth_value * 2 ether;
+        borrower_list[msg.sender].guarantee -= amount / 1 ether * usdc_value * 2 ether / eth_value ;
+        borrower_list[msg.sender].lock_guarantee += amount / 1 ether * usdc_value * 2 ether / eth_value ;
         borrower_list[msg.sender].time = block.timestamp;
-        
-        ERC20(tokenAddress).transfer(msg.sender, amount / 1 ether);
+        ERC20(tokenAddress).transfer(msg.sender, amount);
     }
 
     function withdraw(address tokenAddress, uint256 amount) external
     {
         require(tokenAddress == usdc_addr || tokenAddress == address(0), "Check token address");
-        require(borrower_list[msg.sender].loan == 0, "Debt exists and cannot be withdrawn");
         
         if(tokenAddress == usdc_addr)
         {
@@ -104,7 +100,7 @@ contract Lending
         uint256 fee = repay_fee(msg.sender);
         require(borrower_list[msg.sender].loan + fee >= amount, "Check amount value");
         
-        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount / 1 ether), "repay : transferFrom Error");
+        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount), "repay : transferFrom Error");
 
         uint256 eth_value = oracle.getPrice(address(0));
         uint256 usdc_value = oracle.getPrice(address(usdc_addr));
@@ -124,11 +120,11 @@ contract Lending
     function liquidate(address borrower_addr, address tokenAddress, uint256 amount) external
     {
         update_fee(borrower_addr);
-        require(borrower_list[borrower_addr].lock_guarantee / 1 ether * oracle.getPrice(address(0)) / oracle.getPrice(usdc_addr) * 3 ether / 4 <= borrower_list[borrower_addr].loan, "Liquidation Threshold 75% : Impossible to liquidate");
+        uint256 liquidation_threshold = borrower_list[borrower_addr].lock_guarantee / 1 ether * oracle.getPrice(address(0)) * 3 ether / 4 / oracle.getPrice(address(usdc_addr));
+        require(liquidation_threshold <= borrower_list[borrower_addr].loan, "Liquidation Threshold 75% : Impossible to liquidate");
         require(amount <= borrower_list[borrower_addr].loan , "An amount greater than the amount that can be liquidated has been received");
-        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount / 1 ether), "liquidate : transferFrom Error");
-
-        uint256 total_fee = borrower_list[msg.sender].loan - borrower_list[msg.sender].borrow_loan;
+        require(ERC20(tokenAddress).transferFrom(msg.sender, address(this), amount), "liquidate : transferFrom Error");
+        uint256 total_fee = borrower_list[borrower_addr].loan - borrower_list[borrower_addr].borrow_loan;
         borrower_list[borrower_addr].loan -= amount;
         uint256 liquidate_eth;
 
@@ -159,14 +155,19 @@ contract Lending
     {
         fee = borrower_list[borrower_addr].loan;
         uint256 day = (block.timestamp - borrower_list[borrower_addr].time) / 1 days;
-
         for(uint256 i = 0; i < day; i++)
         {
             fee = fee * 1001 / 1000;
         }
-
-        fee -= borrower_list[borrower_addr].loan;
-        borrower_list[borrower_addr].time = block.timestamp;
+        if(fee != 0)
+        {
+            fee -= borrower_list[borrower_addr].loan;
+            borrower_list[borrower_addr].time = block.timestamp;
+        }
+        else
+        {
+            fee=0;
+        }
     }
 
     function atoken_balanceOf(address user) public view returns(uint256)
@@ -179,6 +180,10 @@ contract Lending
         return borrower_list[user].guarantee;
     }
 
+    function lock_guarantee_balanceOf(address user) public view returns(uint256)
+    {
+        return borrower_list[user].lock_guarantee;
+    }
     function loan_balanceOf(address user) public view returns(uint256)
     {
         return borrower_list[user].loan;
