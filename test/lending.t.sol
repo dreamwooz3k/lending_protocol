@@ -117,6 +117,18 @@ contract Lending_test is Test
         lending.liquidate(bob, address(usdc), 10000 ether);
     }
 
+    function testfee() public
+    {
+        vm.startPrank(bob);
+        address(lending).call{value: 100 ether}(abi.encodeWithSignature("deposit(address,uint256)", address(0), 100 ether));
+        lending.borrow(address(usdc), 10000 ether);
+        uint256 t = block.timestamp;
+        vm.stopPrank();
+        vm.warp(t + 3 days);
+        lending.update_fee(bob);
+        console.log(lending.loan_balanceOf(bob));
+    }
+
     receive() payable external
     {
         
