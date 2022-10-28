@@ -1,0 +1,19 @@
+{
+  "abi": [],
+  "bytecode": {
+    "object": "0x",
+    "linkReferences": {}
+  },
+  "deployedBytecode": {
+    "object": "0x",
+    "linkReferences": {}
+  },
+  "ast": {
+    "absolutePath": "test/Counter.t.sol",
+    "id": 19135,
+    "exportedSymbols": {},
+    "nodeType": "SourceUnit",
+    "src": "0:0:12"
+  },
+  "id": 12
+}
